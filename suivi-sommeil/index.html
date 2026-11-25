@@ -6973,8 +6973,11 @@ setTimeout(secoursAuto, 4000); setInterval(secoursAuto, 6*3600*1000); // copie d
   function maj(){
     var so=source(), d=so&&so.modifie?new Date(so.modifie):(state.modifie?new Date(state.modifie):null), n=state.consults.length;
     b.innerHTML='<span>📱 <b>Consultation</b> — '+(n?'données du '+(d?d.toLocaleDateString('fr-FR')+' à '+d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}):'?')+' ('+n+' consultations)':'aucune donnée chargée')
-      +'. Rien de ce qui est fait ici n’est transmis au PC.</span><button type="button">🔄 Charger la dernière sauvegarde</button>';
-    b.querySelector('button').onclick=function(){ document.getElementById('file-import').click(); };
+      +'. Rien de ce qui est fait ici n’est transmis au PC.</span><button type="button" data-sauv>🔄 Charger la dernière sauvegarde</button>'
+      +'<button type="button" data-cr title="Comptes rendus de polygraphie (PDF) choisis dans le Drive : rangés dans la fiche de chaque patient">📄 Charger des CR (PDF)</button>';
+    b.querySelector('[data-sauv]').onclick=function(){ document.getElementById('file-import').click(); };
+    // CR : lus et rangés par Suivi sommeil (comme sur le PC) ; le suivi de la lecture s'affiche dans l'onglet Consultations
+    b.querySelector('[data-cr]').onclick=function(){ if(location.hash!=='#consultations') location.hash='consultations'; document.getElementById('pdf-import').click(); };
   }
   document.body.insertBefore(b, document.body.firstChild); maj();
   document.getElementById('file-import').addEventListener('change', function(e){
@@ -7047,6 +7050,39 @@ img.logo-p{height:22px!important;max-width:90px!important}
 .dp-kpi{grid-template-columns:repeat(3,minmax(0,1fr))!important}
 .dp-l>span{flex-basis:120px!important}
 .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
+/* calendrier : choix du mois et du nombre de mois */
+.m-titre{flex:1;font-size:16px;font-weight:800;text-transform:capitalize;padding:8px;border-radius:10px}
+.m-cal-opt{display:flex;justify-content:center;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}
+.m-nb{display:inline-flex;gap:3px}.m-nb button.on,.m-mini-grille button.on{background:#1971c2;color:#fff;border-color:#1971c2}
+.m-mini{border:1px solid var(--line);border-radius:12px;padding:8px;margin-bottom:8px;background:var(--card)}
+.m-mini-tete{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.m-mini-tete b{font-size:17px}.m-mini-tete button{font-size:18px;padding:4px 14px}
+.m-mini-grille{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.m-mini-grille button{display:flex;flex-direction:column;align-items:center;padding:8px 2px;border-radius:10px;font-size:14px;text-transform:capitalize}
+.m-mini-grille button small{font-size:11px;color:var(--muted);min-height:13px}.m-mini-grille button.on small{color:#fff}
+.m-mini-grille button.auj{box-shadow:0 0 0 2px #2f9e44 inset}
+.m-cal-mois{margin-bottom:14px}
+/* PPC : filtre par prestataire, encadrés repliables */
+.m-puces{display:flex;gap:6px;overflow-x:auto;-webkit-overflow-scrolling:touch;padding:2px 0 10px}
+.m-puce{flex:none;display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:5px 12px;font-size:14px;white-space:nowrap}
+.m-puce img.logo-p{height:20px!important;max-width:60px!important;margin:0}
+.m-puce b{font-size:12px;color:var(--muted)}.m-puce.on{background:#1971c2;color:#fff;border-color:#1971c2}.m-puce.on b{color:#fff}
+.m-chevron{margin-left:auto;font-size:18px;color:var(--muted);transition:transform .15s}
+.pc-carte.m-replie .m-chevron{transform:rotate(-90deg)}
+.pc-carte.m-replie .pc-defile,.pc-carte.m-replie .pc-plus{display:none}
+.pc-tete{cursor:pointer}
+/* fiche patient : l'essentiel, puis les champs modifiables repliés */
+.m-ess{display:flex;gap:12px;align-items:flex-start;border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px;background:var(--card)}
+.m-ess-iah{display:flex;flex-direction:column;align-items:center;min-width:64px;gap:2px}
+.m-ess-iah .m-iah{font-size:30px;line-height:1}.m-ess-iah small{color:var(--muted);font-size:11px}
+.m-ess-d{flex:1;min-width:0}
+.m-ess-l{display:flex;gap:8px;font-size:14px;padding:3px 0;border-bottom:1px dashed color-mix(in srgb,var(--line) 60%,transparent)}
+.m-ess-l:last-child{border-bottom:0}.m-ess-l>span{color:var(--muted);flex:0 0 92px}.m-ess-l>b{font-weight:600;min-width:0;overflow-wrap:anywhere}
+.m-ess-l img.logo-p{height:20px!important;vertical-align:middle}
+.m-modif{border:1px solid var(--line);border-radius:12px;padding:8px 10px;margin-bottom:10px}
+.m-modif summary{cursor:pointer;color:var(--muted);font-size:14px}
+.m-modif[open] summary{margin-bottom:8px}
+#fp-suppr,#fp-mail{display:none!important}
+
 </style>
 <script>
 (function(){
@@ -7061,7 +7097,7 @@ img.logo-p{height:22px!important;max-width:90px!important}
       .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
     const vis=L.slice(0,vm.nb), groupes=[];
     for(const c of vis){ const m=(c.date||'').slice(0,7)||'sans'; let g=groupes[groupes.length-1]; if(!g||g.m!==m){ g={m,l:[]}; groupes.push(g); } g.l.push(c); }
-    app.innerHTML=`<div class="m-barre"><input type="search" id="m-q" placeholder="🔍 Rechercher un patient…" value="${esc(vm.q)}" autocomplete="off"></div>
+    app.innerHTML=`${importLogHTML()}<div class="m-barre"><input type="search" id="m-q" placeholder="🔍 Rechercher un patient…" value="${esc(vm.q)}" autocomplete="off"></div>
       ${groupes.length?groupes.map(g=>`<div class="m-mois"><span>${g.m==='sans'?'Sans date':esc(nomMois(g.m))}</span><span>${g.l.length}</span></div>
         <div class="m-liste">${g.l.map(c=>`<button class="m-row" data-id="${c.id}">
           <span class="m-date">${c.date?esc(fmtDate(c.date).slice(0,5)):'—'}</span>
@@ -7070,37 +7106,99 @@ img.logo-p{height:22px!important;max-width:90px!important}
           <span class="m-sous"><span class="m-st ${st(c)}"></span>${esc((STATUTS.find(x=>x.v===st(c))||{}).label||'')}${c.analyse==='PSG'?' · Somnum':''} ${tt(c)}</span></button>`).join('')}</div>`).join('')
         :'<div class="m-vide">Aucune consultation. Chargez la dernière sauvegarde (bouton jaune en haut).</div>'}
       ${L.length>vm.nb?`<button class="m-plus" id="m-plus">Afficher plus (${L.length-vm.nb} autres)</button>`:''}`;
-    ouvrir(app);
+    ouvrir(app); bindImportLog();
     const qi=app.querySelector('#m-q'); qi.oninput=()=>{ vm.q=qi.value; vm.nb=150; renderConsultations(); const n=document.getElementById('m-q'); n.focus(); n.setSelectionRange(n.value.length,n.value.length); };
     const p=app.querySelector('#m-plus'); if(p) p.onclick=()=>{ vm.nb+=150; renderConsultations(); };
   };
-  // ---- Calendrier : le mois jour par jour (nom, prénom, IAH, prestataire si appareillé)
+  // ---- Calendrier : du plus récent au plus ancien, 1 à 6 mois par page, mini-calendrier pour choisir le mois
+  const lsGet=(k,d)=>{ try{ const v=localStorage.getItem(k); return v==null?d:v; }catch(e){ return d; } }, lsSet=(k,v)=>{ try{ localStorage.setItem(k,v); }catch(e){} };
+  const MOIS_C=['janv.','févr.','mars','avr.','mai','juin','juil.','août','sept.','oct.','nov.','déc.'];
+  let miniOuvert=false, miniAn=null;
   renderCalendrier=function(){
     const app=document.getElementById('app'), auj=isoLocal(new Date());
     if(!view.calMois) view.calMois=auj.slice(0,7);
-    const [an,mo]=view.calMois.split('-').map(Number), nbJ=new Date(an,mo,0).getDate();
+    const nb=[1,2,3,6].includes(+lsGet('mob_calNb','1'))?+lsGet('mob_calNb','1'):1;
+    const [an0,mo0]=view.calMois.split('-').map(Number);
     const prestaDe=new Map(); for(const c of state.consults) if(c.traitement==='PPC' && c.prestataire) prestaDe.set(patientKey(c), c.prestataire);
-    const parJour={}; for(const c of state.consults){ const d=dateExamen(c); if(c.nom && d && d.startsWith(view.calMois) && c.analyse!=='PSG') (parJour[d]=parJour[d]||[]).push(c); }
+    const parJour={}, parMois={}; for(const c of state.consults){ const d=dateExamen(c); if(!c.nom || !d || c.analyse==='PSG') continue; (parJour[d]=parJour[d]||[]).push(c); parMois[d.slice(0,7)]=(parMois[d.slice(0,7)]||0)+1; }
     const abs=(state.reglages||{}).absences||{};
-    let h='', total=0;
-    for(let j=1;j<=nbJ;j++){
-      const d=`${view.calMois}-${String(j).padStart(2,'0')}`, l=(parJour[d]||[]).sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
-      if(!l.length && !abs[d] && d!==auj) continue; total+=l.length;
-      const x=new Date(d+'T12:00');
-      h+=`<div class="m-jour${d===auj?' auj':''}">${x.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}<span class="hint">${abs[d]?'🏖️ absence':l.length?l.length+' examen'+(l.length>1?'s':''):'aujourd’hui'}</span></div>`;
-      if(l.length) h+=`<div class="m-liste">${l.map(c=>{ const p=prestaDe.get(patientKey(c)); return `<button class="m-row m-cal-row" data-id="${c.id}">
-          <span class="m-nom"><b>${esc(c.nom)}</b> ${esc(c.prenom||'')}${c.statut==='termine'?' <span style="color:#2f9e44">✔</span>':''}</span>
-          <span>${p?logoPresta(p):''}</span>
-          <span class="m-iah ${classeIAH(c.iah)}">${esc(c.iah)||'—'}</span></button>`; }).join('')}</div>`;
-    }
-    const nom=new Date(an,mo-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
-    app.innerHTML=`<div class="m-cal-nav"><button id="m-prec" aria-label="Mois précédent">‹</button><b>${nom}</b><button id="m-suiv" aria-label="Mois suivant">›</button></div>
-      <div style="text-align:center;margin-bottom:6px"><button class="small" id="m-auj">📍 Aujourd’hui</button> <span class="hint">${total} examen${total>1?'s':''} · Somnum non affichés</span></div>
-      ${h||'<div class="m-vide">Aucun examen ce mois-ci.</div>'}`;
+    const blocMois=(an,mo)=>{
+      const cle=`${an}-${String(mo).padStart(2,'0')}`, nbJ=new Date(an,mo,0).getDate(); let h='', total=0;
+      for(let j=nbJ;j>=1;j--){ // jours en ordre décroissant
+        const d=`${cle}-${String(j).padStart(2,'0')}`, l=(parJour[d]||[]).slice().sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+        if(!l.length && !abs[d] && d!==auj) continue; total+=l.length;
+        const x=new Date(d+'T12:00');
+        h+=`<div class="m-jour${d===auj?' auj':''}">${x.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}<span class="hint">${abs[d]?'🏖️ absence':l.length?l.length+' examen'+(l.length>1?'s':''):'aujourd’hui'}</span></div>`;
+        if(l.length) h+=`<div class="m-liste">${l.map(c=>{ const p=prestaDe.get(patientKey(c)); return `<button class="m-row m-cal-row" data-id="${c.id}">
+            <span class="m-nom"><b>${esc(c.nom)}</b> ${esc(c.prenom||'')}${c.statut==='termine'?' <span style="color:#2f9e44">✔</span>':''}</span>
+            <span>${p?logoPresta(p):''}</span>
+            <span class="m-iah ${classeIAH(c.iah)}">${esc(c.iah)||'—'}</span></button>`; }).join('')}</div>`;
+      }
+      return `<section class="m-cal-mois"><div class="m-mois"><span>${esc(nomMois(cle))}</span><span>${total} examen${total>1?'s':''}</span></div>${h||'<div class="m-vide" style="padding:10px">Aucun examen.</div>'}</section>`;
+    };
+    const mois=[...Array(nb)].map((_,i)=>{ const x=new Date(an0,mo0-1-i,1); return [x.getFullYear(), x.getMonth()+1]; });
+    if(miniAn==null) miniAn=an0;
+    const mini=miniOuvert?`<div class="m-mini"><div class="m-mini-tete"><button data-an="-1">‹</button><b>${miniAn}</b><button data-an="1">›</button></div>
+      <div class="m-mini-grille">${MOIS_C.map((m,i)=>{ const cle=`${miniAn}-${String(i+1).padStart(2,'0')}`, n=parMois[cle]||0;
+        return `<button class="${cle===view.calMois?'on':''}${cle===auj.slice(0,7)?' auj':''}" data-mois="${cle}">${m}<small>${n||''}</small></button>`; }).join('')}</div></div>`:'';
+    const titre=nb>1?`${MOIS_C[mois[nb-1][1]-1]} ${mois[nb-1][0]} → ${MOIS_C[mo0-1]} ${an0}`:new Date(an0,mo0-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    app.innerHTML=`<div class="m-cal-nav"><button id="m-prec" aria-label="Mois précédents">‹</button><button class="m-titre" id="m-mini">📅 ${titre} ▾</button><button id="m-suiv" aria-label="Mois suivants">›</button></div>
+      ${mini}
+      <div class="m-cal-opt"><button class="small" id="m-auj">📍 Aujourd’hui</button><span class="m-nb">${[1,2,3,6].map(n=>`<button class="small${n===nb?' on':''}" data-nb="${n}">${n} mois</button>`).join('')}</span></div>
+      ${mois.map(([a,m])=>blocMois(a,m)).join('')}<p class="hint" style="text-align:center">Somnum non affichés</p>`;
     ouvrir(app);
-    const aller=n=>{ const x=new Date(an,mo-1+n,1); view.calMois=isoLocal(x).slice(0,7); renderCalendrier(); scrollTo(0,0); };
+    const aller=n=>{ const x=new Date(an0,mo0-1+n*nb,1); view.calMois=isoLocal(x).slice(0,7); miniAn=null; renderCalendrier(); scrollTo(0,0); };
     app.querySelector('#m-prec').onclick=()=>aller(-1); app.querySelector('#m-suiv').onclick=()=>aller(1);
-    app.querySelector('#m-auj').onclick=()=>{ view.calMois=auj.slice(0,7); renderCalendrier(); const e=app.querySelector('.m-jour.auj'); if(e) e.scrollIntoView({block:'start'}); };
+    app.querySelector('#m-mini').onclick=()=>{ miniOuvert=!miniOuvert; miniAn=an0; renderCalendrier(); };
+    app.querySelectorAll('[data-an]').forEach(b=>b.onclick=()=>{ miniAn+= +b.dataset.an; renderCalendrier(); });
+    app.querySelectorAll('[data-mois]').forEach(b=>b.onclick=()=>{ view.calMois=b.dataset.mois; miniOuvert=false; miniAn=null; renderCalendrier(); scrollTo(0,0); });
+    app.querySelectorAll('[data-nb]').forEach(b=>b.onclick=()=>{ lsSet('mob_calNb', b.dataset.nb); renderCalendrier(); });
+    app.querySelector('#m-auj').onclick=()=>{ view.calMois=auj.slice(0,7); miniOuvert=false; miniAn=null; renderCalendrier(); const e=app.querySelector('.m-jour.auj'); if(e) e.scrollIntoView({block:'start'}); };
+  };
+  // ---- Patients PPC : filtre rapide par prestataire en haut ; chaque encadré se replie / se déplie d'un toucher sur son en-tête
+  let filtrePPC='', repliesPPC=new Set();
+  try{ repliesPPC=new Set(JSON.parse(lsGet('mob_ppcReplies','[]'))); }catch(e){}
+  const renderPPCOrig=renderPPCList;
+  renderPPCList=function(){
+    renderPPCOrig();
+    const app=document.getElementById('app'), cartes=[...app.querySelectorAll('.pc-carte')]; if(!cartes.length) return;
+    const nomDe=c=>c.querySelector('.pc-tete h3').textContent.trim();
+    const puces=cartes.map(c=>{ const n=nomDe(c), nb=(c.querySelector('.pc-nb')||{}).textContent||''; return `<button class="m-puce${filtrePPC===n?' on':''}" data-presta="${esc(n)}">${c.querySelector('.pc-tete img.logo-p')?c.querySelector('.pc-tete img.logo-p').outerHTML:''}<span>${esc(n==='Prestataire non renseigné'?'Non renseigné':n)}</span><b>${esc(nb.replace(/\D/g,''))}</b></button>`; }).join('');
+    const barre=document.createElement('div'); barre.className='m-puces';
+    barre.innerHTML=`<button class="m-puce${filtrePPC?'':' on'}" data-presta=""><span>Tous</span></button>${puces}<button class="m-puce m-puce-tout" data-replier>${cartes.every(c=>repliesPPC.has(nomDe(c)))?'▾ Tout déplier':'▴ Tout replier'}</button>`;
+    app.querySelector('.pc-grille').before(barre);
+    cartes.forEach(c=>{ const n=nomDe(c);
+      c.hidden=!!filtrePPC && filtrePPC!==n;
+      c.classList.toggle('m-replie', repliesPPC.has(n) && filtrePPC!==n);
+      const t=c.querySelector('.pc-tete'); t.insertAdjacentHTML('beforeend','<span class="m-chevron">▾</span>');
+      t.onclick=e=>{ if(e.target.closest('button')) return; repliesPPC.has(n)?repliesPPC.delete(n):repliesPPC.add(n); lsSet('mob_ppcReplies', JSON.stringify([...repliesPPC])); c.classList.toggle('m-replie'); };
+    });
+    barre.querySelectorAll('[data-presta]').forEach(b=>b.onclick=()=>{ filtrePPC=b.dataset.presta; renderPPCList(); scrollTo(0,0); });
+    barre.querySelector('[data-replier]').onclick=()=>{ const tout=cartes.every(c=>repliesPPC.has(nomDe(c))); cartes.forEach(c=>tout?repliesPPC.delete(nomDe(c)):repliesPPC.add(nomDe(c))); lsSet('mob_ppcReplies', JSON.stringify([...repliesPPC])); renderPPCList(); };
+  };
+  // ---- Fiche patient : l'essentiel d'abord ; les champs modifiables sont rangés dans une partie repliée
+  const ficheOrig=fichePatient;
+  fichePatient=function(c){
+    ficheOrig(c);
+    const f=document.querySelector('.fiche-pat .cr-boite'); if(!f) return;
+    const k=patientKey(c), o=(state.rdv||{})[k]||{}, sev=severity(c.iah), stl=(STATUTS.find(x=>x.v===(c.statut||'rien'))||{}).label||'';
+    const de=dateExamen(c), tel=(o.tel||'').replace(/\s/g,'');
+    const L=(lib,val)=>val?`<div class="m-ess-l"><span>${lib}</span><b>${val}</b></div>`:'';
+    const ess=document.createElement('div'); ess.className='m-ess';
+    ess.innerHTML=`<div class="m-ess-iah"><span class="m-iah ${classeIAH(c.iah)}">${esc(c.iah)||'—'}</span><small>IAH /h</small>${sev?`<span class="badge ${sev.cls}">${sev.label}</span>`:''}</div>
+      <div class="m-ess-d">
+        ${L('Examen', `${de?fmtDate(de):'—'}${c.analyse?' · '+esc(LIB_ANALYSE[c.analyse]||c.analyse):''}`)}
+        ${L('Statut', `<span class="m-st ${c.statut||'rien'}"></span> ${esc(stl)}`)}
+        ${L('Traitement', c.traitement?`${c.traitement==='PPC'?'<span class="m-badge">PPC</span>':c.traitement==='OAM'?'<span class="m-badge oam">OAM</span>':esc(c.traitement)} ${c.prestataire&&c.traitement==='PPC'?logoPresta(c.prestataire)+' '+esc(c.prestataire):''}`:'')}
+        ${L('Annonce', estDate(o.annonce)?fmtDate(o.annonce):'')}
+        ${L('Adressé par', esc(c.adresseur||''))}
+        ${L('Téléphone', tel?`<a href="tel:${esc(tel)}">${esc(o.tel)}</a>`:'')}
+        ${L('Commentaire', esc(c.commentaire||''))}
+      </div>`;
+    const g=f.querySelector('.fp-grille'); if(!g) return;
+    const det=document.createElement('details'); det.className='m-modif';
+    det.innerHTML='<summary>✏️ Informations modifiables (date, analyse, statut, traitement…)</summary>';
+    g.before(ess); g.before(det); det.appendChild(g);
   };
   // PPC : toujours la vue par prestataire
   try{ state.reglages={...(state.reglages||{}), ppcVue:'cartes'}; }catch(e){}
