@@ -6987,5 +6987,125 @@ setTimeout(secoursAuto, 4000); setInterval(secoursAuto, 6*3600*1000); // copie d
   });
 })();
 </script>
+<!-- Interface téléphone (consultation seule) : listes lisibles d'un coup d'œil, sans défilement latéral -->
+<style>
+/* en-tête compact, onglets défilants */
+header{padding:6px 10px!important;gap:6px!important}
+header h1{font-size:16px!important}
+header h1 small{display:none}
+header nav{display:flex;flex-wrap:nowrap!important;overflow-x:auto;-webkit-overflow-scrolling:touch;gap:4px;max-width:100%}
+header nav a{white-space:nowrap;flex:none}
+#btn-import{display:none!important}
+main#app{padding:8px!important}
+/* logos des prestataires agrandis */
+img.logo-p{height:22px!important;max-width:90px!important}
+.pc-tete img.logo-p{height:38px!important;max-width:130px!important}
+/* liste des consultations */
+.m-barre{display:flex;gap:8px;align-items:center;margin:4px 0 10px}
+.m-barre input{flex:1;font-size:16px;padding:9px 12px;border-radius:10px}
+.m-mois{margin:14px 0 4px;font-size:13px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);display:flex;justify-content:space-between}
+.m-liste{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card)}
+.m-row{all:unset;box-sizing:border-box;display:grid;grid-template-columns:44px minmax(0,1fr) auto;gap:2px 10px;align-items:center;padding:9px 12px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);cursor:pointer}
+.m-row:last-child{border-bottom:0}
+.m-row:active{background:color-mix(in srgb,#1971c2 10%,transparent)}
+.m-date{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;grid-row:span 2}
+.m-nom{font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.m-iah{font-size:17px;font-weight:800;font-variant-numeric:tabular-nums;text-align:right}
+.m-iah.iah-fort{color:var(--warn)} .m-iah.iah-grave{color:var(--bad)}
+.m-sous{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;color:var(--muted);grid-column:2/4}
+.m-badge{font-size:11.5px;font-weight:800;border-radius:6px;padding:1px 7px;color:#fff;background:#1971c2}
+.m-badge.oam{background:#7048e8}
+.m-st{width:10px;height:10px;border-radius:50%;display:inline-block}
+.m-st.rien{background:#adb5bd}.m-st.cr{background:#f08c00}.m-st.termine{background:#2f9e44}
+.m-plus{display:block;width:100%;margin-top:10px;padding:10px;border-radius:10px}
+/* calendrier : liste des jours */
+.m-cal-nav{display:flex;align-items:center;gap:8px;margin:4px 0 8px}
+.m-cal-nav b{flex:1;text-align:center;font-size:17px;text-transform:capitalize}
+.m-cal-nav button{font-size:18px;padding:6px 14px;border-radius:10px}
+.m-jour{margin:12px 0 4px;display:flex;align-items:baseline;gap:8px;font-weight:800;font-size:14px;text-transform:capitalize}
+.m-jour.auj{color:#1971c2}
+.m-jour .hint{font-weight:400;text-transform:none}
+.m-cal-row{grid-template-columns:minmax(0,1fr) auto auto}
+.m-vide{padding:30px 10px;text-align:center;color:var(--muted)}
+/* encadrés PPC : 4 colonnes lisibles (date d'analyse masquée) */
+.pc-grille{grid-template-columns:1fr!important}
+.pc-cols,.pc-row{grid-template-columns:minmax(0,1fr) 46px 62px 46px!important;padding-left:10px!important;padding-right:10px!important}
+.pc-cols>:nth-child(3),.pc-row>:nth-child(3){display:none!important}
+.pc-cols{display:grid!important;font-size:10px!important;letter-spacing:0!important}
+.pc-grip,.pc-resume .hint{display:none!important}
+.pc-row{font-size:15px!important}
+.pc-tete{flex-wrap:wrap}
+.pc-vues,#btn-telesuivi,#btn-mails,#btn-mails-cfg,#btn-inst,#btn-pdf{display:none!important}
+/* fiche patient en pleine largeur */
+.fiche-pat .cr-boite{width:100%!important;max-width:100%!important;border-radius:0!important;min-height:100%}
+.cr-modal.fiche-pat{padding:0!important}
+.fiche-pat .cr-boite{box-sizing:border-box;padding:12px!important;overflow-x:hidden}
+.fp-grille{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important}
+.fp-champ{min-width:0!important}
+.fp-champ input,.fp-champ select,.fp-champ textarea{width:100%!important;min-width:0!important;box-sizing:border-box}
+.dp{grid-template-columns:1fr!important}
+.dp-kpi{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+.dp-l>span{flex-basis:120px!important}
+.tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;touch-action:pan-x pan-y}
+</style>
+<script>
+(function(){
+  const vm={q:'', nb:150};
+  const st=c=>c.statut||'rien';
+  const tt=c=>c.traitement==='PPC'?`<span class="m-badge">PPC</span>${c.prestataire?logoPresta(c.prestataire):''}`:c.traitement==='OAM'?'<span class="m-badge oam">OAM</span>':'';
+  const ouvrir=app=>app.querySelectorAll('[data-id]').forEach(b=>b.onclick=()=>{ const c=state.consults.find(x=>x.id===b.dataset.id); if(c) fichePatient(c); });
+  // ---- Consultations : une ligne par consultation (date, nom, IAH, traitement + prestataire, statut), regroupées par mois
+  renderConsultations=function(){
+    const app=document.getElementById('app'), q=norm(vm.q);
+    const L=state.consults.filter(c=>c.nom && (!q || norm(c.nom+' '+(c.prenom||'')).includes(q) || norm((c.prenom||'')+' '+c.nom).includes(q)))
+      .sort((a,b)=>(b.date||'').localeCompare(a.date||''));
+    const vis=L.slice(0,vm.nb), groupes=[];
+    for(const c of vis){ const m=(c.date||'').slice(0,7)||'sans'; let g=groupes[groupes.length-1]; if(!g||g.m!==m){ g={m,l:[]}; groupes.push(g); } g.l.push(c); }
+    app.innerHTML=`<div class="m-barre"><input type="search" id="m-q" placeholder="🔍 Rechercher un patient…" value="${esc(vm.q)}" autocomplete="off"></div>
+      ${groupes.length?groupes.map(g=>`<div class="m-mois"><span>${g.m==='sans'?'Sans date':esc(nomMois(g.m))}</span><span>${g.l.length}</span></div>
+        <div class="m-liste">${g.l.map(c=>`<button class="m-row" data-id="${c.id}">
+          <span class="m-date">${c.date?esc(fmtDate(c.date).slice(0,5)):'—'}</span>
+          <span class="m-nom"><b>${esc(c.nom)}</b> ${esc(c.prenom||'')}</span>
+          <span class="m-iah ${classeIAH(c.iah)}">${esc(c.iah)||'—'}</span>
+          <span class="m-sous"><span class="m-st ${st(c)}"></span>${esc((STATUTS.find(x=>x.v===st(c))||{}).label||'')}${c.analyse==='PSG'?' · Somnum':''} ${tt(c)}</span></button>`).join('')}</div>`).join('')
+        :'<div class="m-vide">Aucune consultation. Chargez la dernière sauvegarde (bouton jaune en haut).</div>'}
+      ${L.length>vm.nb?`<button class="m-plus" id="m-plus">Afficher plus (${L.length-vm.nb} autres)</button>`:''}`;
+    ouvrir(app);
+    const qi=app.querySelector('#m-q'); qi.oninput=()=>{ vm.q=qi.value; vm.nb=150; renderConsultations(); const n=document.getElementById('m-q'); n.focus(); n.setSelectionRange(n.value.length,n.value.length); };
+    const p=app.querySelector('#m-plus'); if(p) p.onclick=()=>{ vm.nb+=150; renderConsultations(); };
+  };
+  // ---- Calendrier : le mois jour par jour (nom, prénom, IAH, prestataire si appareillé)
+  renderCalendrier=function(){
+    const app=document.getElementById('app'), auj=isoLocal(new Date());
+    if(!view.calMois) view.calMois=auj.slice(0,7);
+    const [an,mo]=view.calMois.split('-').map(Number), nbJ=new Date(an,mo,0).getDate();
+    const prestaDe=new Map(); for(const c of state.consults) if(c.traitement==='PPC' && c.prestataire) prestaDe.set(patientKey(c), c.prestataire);
+    const parJour={}; for(const c of state.consults){ const d=dateExamen(c); if(c.nom && d && d.startsWith(view.calMois) && c.analyse!=='PSG') (parJour[d]=parJour[d]||[]).push(c); }
+    const abs=(state.reglages||{}).absences||{};
+    let h='', total=0;
+    for(let j=1;j<=nbJ;j++){
+      const d=`${view.calMois}-${String(j).padStart(2,'0')}`, l=(parJour[d]||[]).sort((a,b)=>(a.nom||'').localeCompare(b.nom||''));
+      if(!l.length && !abs[d] && d!==auj) continue; total+=l.length;
+      const x=new Date(d+'T12:00');
+      h+=`<div class="m-jour${d===auj?' auj':''}">${x.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}<span class="hint">${abs[d]?'🏖️ absence':l.length?l.length+' examen'+(l.length>1?'s':''):'aujourd’hui'}</span></div>`;
+      if(l.length) h+=`<div class="m-liste">${l.map(c=>{ const p=prestaDe.get(patientKey(c)); return `<button class="m-row m-cal-row" data-id="${c.id}">
+          <span class="m-nom"><b>${esc(c.nom)}</b> ${esc(c.prenom||'')}${c.statut==='termine'?' <span style="color:#2f9e44">✔</span>':''}</span>
+          <span>${p?logoPresta(p):''}</span>
+          <span class="m-iah ${classeIAH(c.iah)}">${esc(c.iah)||'—'}</span></button>`; }).join('')}</div>`;
+    }
+    const nom=new Date(an,mo-1,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'});
+    app.innerHTML=`<div class="m-cal-nav"><button id="m-prec" aria-label="Mois précédent">‹</button><b>${nom}</b><button id="m-suiv" aria-label="Mois suivant">›</button></div>
+      <div style="text-align:center;margin-bottom:6px"><button class="small" id="m-auj">📍 Aujourd’hui</button> <span class="hint">${total} examen${total>1?'s':''} · Somnum non affichés</span></div>
+      ${h||'<div class="m-vide">Aucun examen ce mois-ci.</div>'}`;
+    ouvrir(app);
+    const aller=n=>{ const x=new Date(an,mo-1+n,1); view.calMois=isoLocal(x).slice(0,7); renderCalendrier(); scrollTo(0,0); };
+    app.querySelector('#m-prec').onclick=()=>aller(-1); app.querySelector('#m-suiv').onclick=()=>aller(1);
+    app.querySelector('#m-auj').onclick=()=>{ view.calMois=auj.slice(0,7); renderCalendrier(); const e=app.querySelector('.m-jour.auj'); if(e) e.scrollIntoView({block:'start'}); };
+  };
+  // PPC : toujours la vue par prestataire
+  try{ state.reglages={...(state.reglages||{}), ppcVue:'cartes'}; }catch(e){}
+  render();
+})();
+</script>
 </body>
 </html>
