@@ -736,6 +736,19 @@ body.pc-redim{cursor:col-resize;user-select:none}
 .ml-sug{color:#2f9e44;font-weight:600}
 .ml-complet pre{white-space:pre-wrap;max-height:220px;overflow:auto;font-size:12px;background:color-mix(in srgb,var(--line) 25%,transparent);padding:6px 8px;border-radius:6px;margin:4px 0}
 .ml-alerte{color:#d9480f;font-size:12.5px;margin-bottom:3px}
+.pr-tete img.logo-p{height:36px;max-width:130px;margin:0}
+.pr-kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:14px}
+.pr-kpis>div{border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:var(--card)}
+.pr-kpis b{display:block;font-size:24px;font-variant-numeric:tabular-nums}
+.pr-kpis span{font-size:12px;color:var(--muted);line-height:1.3;display:block}
+.pr-h4{margin:6px 0 8px;font-size:15px}
+.pr-an{border:1px solid var(--line);border-radius:12px;padding:8px 12px;margin-bottom:8px;background:var(--card)}
+.pr-an-t{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px}.pr-an-t span{font-size:13px;color:var(--muted)}
+.pr-barres{display:grid;grid-template-columns:repeat(12,1fr);gap:4px;align-items:end}
+.pr-barre{display:flex;flex-direction:column;align-items:center;gap:2px}
+.pr-barre i{display:block;width:100%;max-width:26px;border-radius:4px 4px 0 0;background:#1971c2;min-height:2px}
+.pr-barre small{font-size:10.5px;color:var(--muted)}.pr-n{font-size:11.5px;font-weight:700;min-height:14px}
+.pc-tete h3[title]:hover,.pc-tete img.logo-p[title]:hover{text-decoration:underline;opacity:.85}
 .cf-table{width:100%;border-collapse:collapse;font-size:13px}
 .cf-table th,.cf-table td{padding:5px 6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:middle;white-space:nowrap}
 .cf-table td img.logo-p{height:16px;vertical-align:middle}
@@ -2320,6 +2333,49 @@ function cartesPPC(tous){
         ${g.l.length>PPC_LIGNES_VISIBLES?`<button class="pc-plus" data-derouler="${esc(g.pr)}">${ouvert?'▴ Revenir à la liste défilante':`▾ Afficher les ${g.l.length} patients sur la page`}</button>`:''}
       </section>`; }).join('')}</div>`;
 }
+// Fiche d'un prestataire (clic sur son logo ou son nom) : télésuivi + statistiques
+// (patients, installations par année et par mois, bien observants, IAH résiduel, fins de prescription)
+const MOIS_INIT=['J','F','M','A','M','J','J','A','S','O','N','D'];
+function fichePrestataire(nom){
+  document.querySelector('.pr-modal')?.remove();
+  const presta=nom==='Prestataire non renseigné'?'':nom, auj=isoLocal(new Date());
+  const pts=ppcPatients().filter(p=>(p.prestataire||'')===presta);
+  const premier=new Map(); for(const c of state.consults){ const d=dateExamen(c); if(!estDate(d)) continue; const k=patientKey(c); if(!premier.has(k)||d<premier.get(k)) premier.set(k,d); }
+  const plus15=d=>{ const x=new Date(d+'T12:00'); x.setDate(x.getDate()+15); return isoLocal(x); };
+  let nRap=0, nObsMes=0, nObs=0, sObs=0, nIah=0, nIahOk=0, nFin=0, nFinBientot=0, nEst=0; const parAn={};
+  for(const p of pts){
+    const s=suivis(p.key), l=s[s.length-1], o=(state.rdv||{})[p.key]||{};
+    if(l){ nRap++; const h=parseObs(l.obs); if(h!=null){ nObsMes++; sObs+=h; if(h>=4) nObs++; } const i=num(l.iahRes); if(i!=null){ nIah++; if(i<5) nIahOk++; } }
+    if(estDate(o.finPrescr)){ if(o.finPrescr<auj) nFin++; else if(o.finPrescr<plusMois(auj,1)) nFinBientot++; }
+    // installation : date réelle (portail du prestataire) sinon estimée = 1er examen + 15 jours
+    let d=estDate(o.installation)?o.installation:''; if(!d && premier.has(p.key)){ d=plus15(premier.get(p.key)); nEst++; }
+    if(d){ const a=d.slice(0,4); (parAn[a]=parAn[a]||Array(12).fill(0))[+d.slice(5,7)-1]++; }
+  }
+  const pct=(a,b)=>b?Math.round(a/b*100)+' %':'—';
+  const ans=Object.keys(parAn).sort().reverse(), max=Math.max(1,...ans.flatMap(a=>parAn[a]));
+  const fond=document.createElement('div'); fond.className='cr-modal fiche-pat pr-modal';
+  fond.innerHTML=`<div class="cr-boite" style="width:min(820px,100%)">
+    <div class="toolbar pr-tete" style="margin:0 0 10px">${presta?logoPresta(presta):''}<b style="font-size:19px">${esc(nom)}</b><div class="spacer"></div>${presta?boutonTelesuivi(presta,false):''}<button class="small" data-x>✕ Fermer</button></div>
+    <div class="pr-kpis">
+      <div><b>${pts.length}</b><span>patients sous PPC</span></div>
+      <div><b class="${nObsMes&&nObs/nObsMes>=0.7?'val-ok':nObsMes?'val-warn':''}">${pct(nObs,nObsMes)}</b><span>bien observants (≥ 4 h)<br>${nObs} / ${nObsMes}</span></div>
+      <div><b>${nObsMes?fmtObs(sObs/nObsMes):'—'}</b><span>observance moyenne</span></div>
+      <div><b class="${nIah&&nIahOk/nIah>=0.8?'val-ok':nIah?'val-warn':''}">${pct(nIahOk,nIah)}</b><span>IAH résiduel &lt; 5<br>${nIahOk} / ${nIah}</span></div>
+      <div><b>${pts.length-nRap}</b><span>sans rapport de télésuivi</span></div>
+      <div><b class="${nFin?'val-bad':''}">${nFin}</b><span>fin de prescription échue${nFinBientot?`<br>+ ${nFinBientot} dans moins d’un mois`:''}</span></div>
+    </div>
+    <h4 class="pr-h4">Installations par année et par mois</h4>
+    ${ans.length?ans.map(a=>{ const t=parAn[a].reduce((x,y)=>x+y,0); return `<div class="pr-an"><div class="pr-an-t"><b>${a}</b><span>${t} installation${t>1?'s':''}</span></div>
+      <div class="pr-barres">${parAn[a].map((n,i)=>`<div class="pr-barre" title="${new Date(+a,i,1).toLocaleDateString('fr-FR',{month:'long',year:'numeric'})} : ${n} installation${n>1?'s':''}"><span class="pr-n">${n||''}</span><i style="height:${Math.round(n/max*56)}px"></i><small>${MOIS_INIT[i]}</small></div>`).join('')}</div></div>`; }).join('')
+      :'<p class="muted">Aucune date d’installation connue.</p>'}
+    <p class="hint" style="margin-bottom:0">Date d’installation : celle du portail du prestataire quand elle est connue${nEst?`, sinon estimée (premier examen + 15 jours) pour ${nEst} patient${nEst>1?'s':''}`:''}. Observance et IAH résiduel : dernier rapport de télésuivi importé.</p>
+  </div>`;
+  document.body.appendChild(fond);
+  const fermer=()=>{ fond.remove(); document.removeEventListener('keydown',ech); };
+  const ech=e=>{ if(e.key==='Escape') fermer(); }; document.addEventListener('keydown',ech);
+  fond.querySelector('[data-x]').onclick=fermer; fond.onclick=e=>{ if(e.target===fond) fermer(); };
+  bindTelesuivi(fond);
+}
 function bindCartesPPC(app){
   app.querySelectorAll('.pc-row').forEach(b=>b.onclick=()=>{ const k=b.dataset.k;
     const c=state.consults.filter(x=>patientKey(x)===k).sort((a,b)=>((b.traitement==='PPC')-(a.traitement==='PPC'))||(b.date||'').localeCompare(a.date||''))[0]; if(c) fichePatient(c); });
@@ -2340,6 +2396,8 @@ function bindCartesPPC(app){
         state.reglages={...(state.reglages||{}), pcCols:r}; save(); };
       document.addEventListener('mousemove',bouge); document.addEventListener('mouseup',lache); };
   });
+  // logo ou nom d'un prestataire : sa fiche (télésuivi + statistiques)
+  app.querySelectorAll('.pc-tete img.logo-p,.pc-tete h3,.pc-tete .pc-sans').forEach(e=>{ e.style.cursor='pointer'; e.title='Statistiques et télésuivi du prestataire'; e.onclick=ev=>{ ev.stopPropagation(); fichePrestataire(e.closest('.pc-tete').querySelector('h3').textContent.trim()); }; });
   bindTelesuivi(app);
 }
 function renderPPCList(){
@@ -7091,8 +7149,8 @@ img.logo-p{height:22px!important;max-width:90px!important}
 /* télésuivi : plus dans les encadrés (accessible depuis la fiche du prestataire) */
 .pc-tete .btn-telesuivi{display:none!important}
 .pc-tete img.logo-p,.pc-tete h3{text-decoration:underline dotted color-mix(in srgb,var(--muted) 60%,transparent);text-underline-offset:4px}
-.m-presta .toolbar img.logo-p{height:34px!important;max-width:120px!important}
-.m-presta .btn-telesuivi{width:100%;padding:10px;font-size:15px}
+.pr-modal .pr-tete{flex-wrap:wrap}.pr-modal .pr-tete .btn-telesuivi{order:5;width:100%;padding:10px;font-size:15px}
+.pr-kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}
 .m-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-bottom:14px}
 .m-kpis>div{border:1px solid var(--line);border-radius:12px;padding:8px 10px;background:var(--card)}
 .m-kpis b{display:block;font-size:22px;font-variant-numeric:tabular-nums}
@@ -7201,47 +7259,6 @@ img.logo-p{height:22px!important;max-width:90px!important}
     barre.querySelectorAll('[data-presta]').forEach(b=>b.onclick=()=>{ filtrePPC=b.dataset.presta; renderPPCList(); scrollTo(0,0); });
     barre.querySelector('[data-replier]').onclick=()=>{ const tout=cartes.every(c=>repliesPPC.has(nomDe(c))); cartes.forEach(c=>tout?repliesPPC.delete(nomDe(c)):repliesPPC.add(nomDe(c))); lsSet('mob_ppcReplies', JSON.stringify([...repliesPPC])); renderPPCList(); };
   };
-  // ---- Fiche d'un prestataire : télésuivi + statistiques (patients, installations par année et par mois, observance)
-  const MOIS_L=['J','F','M','A','M','J','J','A','S','O','N','D'];
-  function fichePrestataire(nom){
-    const presta=nom==='Prestataire non renseigné'?'':nom, auj=isoLocal(new Date());
-    const pts=ppcPatients().filter(p=>(p.prestataire||'')===presta);
-    const premier=new Map(); for(const c of state.consults){ const d=dateExamen(c); if(!estDate(d)) continue; const k=patientKey(c); if(!premier.has(k)||d<premier.get(k)) premier.set(k,d); }
-    const plus15=d=>{ const x=new Date(d+'T12:00'); x.setDate(x.getDate()+15); return isoLocal(x); };
-    let nRap=0, nObs=0, sObs=0, nIah=0, nIahOk=0, nFin=0, nEst=0; const parAn={};
-    for(const p of pts){
-      const s=suivis(p.key), l=s[s.length-1], o=(state.rdv||{})[p.key]||{};
-      if(l){ nRap++; const h=parseObs(l.obs); if(h!=null){ sObs+=h; if(h>=4) nObs++; } const i=num(l.iahRes); if(i!=null){ nIah++; if(i<5) nIahOk++; } }
-      if(estDate(o.finPrescr) && o.finPrescr<auj) nFin++;
-      // installation : date réelle (portail du prestataire) sinon estimée = 1er examen + 15 jours
-      let d=estDate(o.installation)?o.installation:''; if(!d && premier.has(p.key)){ d=plus15(premier.get(p.key)); nEst++; }
-      if(d){ const a=d.slice(0,4), m=+d.slice(5,7)-1; (parAn[a]=parAn[a]||Array(12).fill(0))[m]++; }
-    }
-    const nObsMes=pts.filter(p=>{ const s=suivis(p.key), l=s[s.length-1]; return l && parseObs(l.obs)!=null; }).length;
-    const pct=(a,b)=>b?Math.round(a/b*100)+' %':'—';
-    const ans=Object.keys(parAn).sort().reverse(), max=Math.max(1,...ans.flatMap(a=>parAn[a]));
-    const fond=document.createElement('div'); fond.className='cr-modal fiche-pat m-presta';
-    fond.innerHTML=`<div class="cr-boite">
-      <div class="toolbar" style="margin:0 0 10px">${presta?logoPresta(presta):''}<b style="font-size:18px">${esc(nom)}</b><div class="spacer"></div><button class="small" data-x>✕ Fermer</button></div>
-      ${presta?`<div style="margin-bottom:12px">${boutonTelesuivi(presta,false)}</div>`:''}
-      <div class="m-kpis">
-        <div><b>${pts.length}</b><span>patients sous PPC</span></div>
-        <div><b class="${nObsMes&&nObs/nObsMes>=0.7?'val-ok':nObsMes?'val-warn':''}">${pct(nObs,nObsMes)}</b><span>bien observants (≥ 4 h)<br>${nObs} / ${nObsMes}</span></div>
-        <div><b>${nObsMes?fmtObs(sObs/nObsMes):'—'}</b><span>observance moyenne</span></div>
-        <div><b class="${nIah&&nIahOk/nIah>=0.8?'val-ok':nIah?'val-warn':''}">${pct(nIahOk,nIah)}</b><span>IAH résiduel &lt; 5<br>${nIahOk} / ${nIah}</span></div>
-        <div><b>${pts.length-nRap}</b><span>sans rapport de télésuivi</span></div>
-        <div><b class="${nFin?'val-bad':''}">${nFin}</b><span>fin de prescription échue</span></div>
-      </div>
-      <h4 class="m-h4">Installations par année et par mois</h4>
-      ${ans.length?ans.map(a=>{ const t=parAn[a].reduce((x,y)=>x+y,0); return `<div class="m-an"><div class="m-an-t"><b>${a}</b><span>${t} installation${t>1?'s':''}</span></div>
-        <div class="m-barres">${parAn[a].map((n,i)=>`<div class="m-barre-m" title="${n}"><span class="m-n">${n||''}</span><i style="height:${Math.round(n/max*44)}px"></i><small>${MOIS_L[i]}</small></div>`).join('')}</div></div>`; }).join('')
-        :'<p class="muted">Aucune date d’installation connue.</p>'}
-      <p class="hint">Date d’installation : celle du portail du prestataire quand elle est connue${nEst?`, sinon estimée (premier examen + 15 jours) pour ${nEst} patient${nEst>1?'s':''}`:''}. Observance et IAH : dernier rapport de télésuivi importé.</p>
-    </div>`;
-    document.body.appendChild(fond);
-    fond.querySelector('[data-x]').onclick=()=>fond.remove();
-    bindTelesuivi(fond);
-  }
   // ---- Fiche patient : l'essentiel d'abord ; les champs modifiables sont rangés dans une partie repliée
   const ficheOrig=fichePatient;
   fichePatient=function(c){
