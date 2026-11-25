@@ -5990,7 +5990,7 @@ document.addEventListener('mousedown',e=>{ if(!view.ajoutOuvert) return;
 // Le dossier est choisi une fois (ex. « G:\Mon Drive\…\CR Nox ») ; son accès est mémorisé dans ce navigateur.
 // À l'ouverture de la page, si la dernière vérification date de plus de 7 jours, les nouveaux PDF sont lus et intégrés.
 // Chaque fichier n'est lu qu'une fois (repéré par son chemin, sa taille et sa date de modification).
-const DOSSIER_JOURS=7;
+const DOSSIER_JOURS=7, CR_MAX_DEFAUT=10; // à chaque vérification : seulement les 10 nouveaux CR les plus récents (0 = tous)
 const dossierCR = () => state.reglages && state.reglages.dossierCR || {};
 const dossierPossible = () => typeof window.showDirectoryPicker==='function';
 async function choisirDossierCR(){
@@ -6027,6 +6027,10 @@ async function verifierDossierCR(parUtilisateur=false){
   const nouveaux=[];
   try{ for await (const x of pdfsDuDossier(h)){ const f=await x.e.getFile(); const k=x.chemin+'|'+f.size+'|'+f.lastModified; if(!vus[k]) nouveaux.push({k,f,chemin:x.chemin}); } }
   catch(e){ console.error(e); importLog.lines.push(`❌ Lecture du dossier impossible (${esc(e.message||e)}).`); }
+  // seulement les N comptes rendus les plus récents (réglage « Lire : les 10 derniers », par défaut) ; les plus anciens
+  // sont notés comme vus : ils ne seront plus proposés
+  const max=+(d.max??CR_MAX_DEFAUT); let nVieux=0;
+  if(max>0 && nouveaux.length>max){ nouveaux.sort((a,b)=>b.f.lastModified-a.f.lastModified); const vieux=nouveaux.splice(max); vieux.forEach(x=>vus[x.k]=today()); nVieux=vieux.length; }
   let nI=0, nA=0;
   for(const [i,x] of nouveaux.entries()){
     importLog.label=`${x.chemin} (${i+1}/${nouveaux.length})`; importLog.p=i/nouveaux.length; refreshLog();
@@ -6044,7 +6048,7 @@ async function verifierDossierCR(parUtilisateur=false){
   }
   state.reglages={...(state.reglages||{}), dossierCR:{...dossierCR(), nom:h.name, derniere:new Date().toISOString(), vus}}; save();
   importLog.lines.unshift(nouveaux.length
-    ? `📁 Dossier « ${esc(h.name)} » : ${nouveaux.length} nouveau(x) fichier(s) — ${nI} compte(s) rendu(s) intégré(s)${nA?`, ${nA} autre(s) document(s) ignoré(s)`:''}.`
+    ? `📁 Dossier « ${esc(h.name)} » : ${nouveaux.length} nouveau(x) fichier(s) — ${nI} compte(s) rendu(s) intégré(s)${nA?`, ${nA} autre(s) document(s) ignoré(s)`:''}${nVieux?` ; ${nVieux} plus ancien(s) non lu(s) (réglage : les ${max} plus récents)`:''}.`
     : `📁 Dossier « ${esc(h.name)} » : aucun nouveau compte rendu.`);
   importLog.done=true; render();
 }
@@ -6062,12 +6066,14 @@ function dossierHTML(){
   const der=d.derniere?new Date(d.derniere):null, proch=der?new Date(der.getTime()+DOSSIER_JOURS*864e5):null;
   return `<div class="dossier-cr${dossierAttente?' attente':''}"><div><b>📁 ${esc(d.nom)}</b> <span class="sous">${der?`vérifié le ${der.toLocaleDateString('fr-FR')} · prochaine fois vers le ${proch.toLocaleDateString('fr-FR')}`:'jamais vérifié'}</span>
     ${dossierAttente?'<span class="sous" style="color:var(--warn)">⏰ vérification due : cliquez « Vérifier » pour autoriser l\'accès</span>':''}</div>
-    <div class="toolbar" style="margin:4px 0 0"><button class="small${dossierAttente?' primary':''}" id="dos-verifier">🔄 Vérifier maintenant</button><button class="small" id="dos-changer" title="Choisir un autre dossier">Changer</button></div></div>`;
+    <div class="toolbar" style="margin:4px 0 0"><button class="small${dossierAttente?' primary':''}" id="dos-verifier">🔄 Vérifier maintenant</button><button class="small" id="dos-changer" title="Choisir un autre dossier">Changer</button>
+      <label class="sous" title="Les comptes rendus plus anciens ne sont pas relus : ils sont notés comme vus">Lire : <select id="dos-max">${[[10,'les 10 plus récents'],[20,'les 20 plus récents'],[50,'les 50 plus récents'],[0,'tous les nouveaux']].map(([v,l])=>`<option value="${v}"${v===+(d.max??CR_MAX_DEFAUT)?' selected':''}>${l}</option>`).join('')}</select></label></div></div>`;
 }
 function bindDossier(app){
   const c=app.querySelector('#dos-choisir'); if(c) c.onclick=choisirDossierCR;
   const v=app.querySelector('#dos-verifier'); if(v) v.onclick=()=>verifierDossierCR(true);
   const ch=app.querySelector('#dos-changer'); if(ch) ch.onclick=choisirDossierCR;
+  const mx=app.querySelector('#dos-max'); if(mx) mx.onchange=()=>{ state.reglages={...(state.reglages||{}), dossierCR:{...dossierCR(), max:+mx.value}}; save(); toast(+mx.value?`Seuls les ${mx.value} comptes rendus les plus récents seront lus`:'Tous les nouveaux comptes rendus seront lus'); };
   const v2=app.querySelector('#dos-verifier2'); if(v2) v2.onclick=()=>verifierDossierCR(true);
 }
 
@@ -7259,6 +7265,13 @@ img.logo-p{height:22px!important;max-width:90px!important}
     const det=document.createElement('details'); det.className='m-modif';
     det.innerHTML='<summary>✏️ Informations modifiables (date, analyse, statut, traitement…)</summary>';
     g.before(ess); g.before(det); det.appendChild(g);
+  };
+  // CR choisis dans le Drive : au-delà de 10 fichiers, seuls les 10 plus récents sont lus (sauf si l'on demande tout)
+  document.getElementById('pdf-import').onchange=e=>{
+    let f=[...e.target.files]; e.target.value='';
+    if(f.length>10){ f.sort((a,b)=>b.lastModified-a.lastModified);
+      if(confirm(`${f.length} fichiers choisis.\n\nOK : ne lire que les 10 plus récents.\nAnnuler : tout lire (plus long).`)) f=f.slice(0,10); }
+    if(f.length) importFiles(f);
   };
   // PPC : toujours la vue par prestataire
   try{ state.reglages={...(state.reglages||{}), ppcVue:'cartes'}; }catch(e){}
